@@ -5,6 +5,7 @@ import com.scalablescripts.auth.entities.Token;
 import com.scalablescripts.auth.entities.User;
 import com.scalablescripts.auth.error.*;
 import com.scalablescripts.auth.repositories.UserRepository;
+import dev.samstevens.totp.code.CodeVerifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,21 +16,24 @@ import java.util.UUID;
 @Service
 public class AuthService {
     private final UserRepository userRepository;
-    private  final PasswordEncoder passwordEncoder;
-    private  final String accessTokenSecret;
-    private  final String refreshTokenSecret;
+    private final PasswordEncoder passwordEncoder;
+    private final String accessTokenSecret;
+    private final String refreshTokenSecret;
     private final MailService mailService;
+    private final CodeVerifier codeVerifier;
+
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        @Value("${application.security.access-token-secret}") String accessTokenSecret,
-                       @Value("${application.security.refresh-token-secret}") String refreshTokenSecret, MailService mailService) {
+                       @Value("${application.security.refresh-token-secret}") String refreshTokenSecret, MailService mailService, CodeVerifier codeVerifier) {
 
                               this.userRepository = userRepository;
                               this.passwordEncoder = passwordEncoder;
                               this.accessTokenSecret = accessTokenSecret;
                               this.refreshTokenSecret = refreshTokenSecret;
                               this.mailService = mailService;
+        this.codeVerifier = codeVerifier;
     }
 
     public User register(String firstName, String lastName, String email, String password, String passwordConfirm) {
@@ -57,7 +61,8 @@ public class AuthService {
         //see if passwords match
             if (!passwordEncoder.matches(password, user.getPassword()))
                 throw new InvalidCredentialsError();
-            var login =Login.of(user.getId(), accessTokenSecret, refreshTokenSecret);
+
+            var login =Login.of(user.getId(), accessTokenSecret, refreshTokenSecret, Objects.equals(user.getTfasecret(), ""));
             var refreshJwt= login.getRefreshJwt();
 
                 user.addToken(new Token(refreshJwt.getToken(), refreshJwt.getIssuedAt(), refreshJwt.getExpiration()));
@@ -82,7 +87,7 @@ public class AuthService {
                         refreshJwt.getExpiration())
                             .orElseThrow(UnauthenticatedError::new);
 
-        return Login.of(refreshJwt.getUserId() , accessTokenSecret, refreshJwt);
+        return Login.of(refreshJwt.getUserId() , accessTokenSecret, refreshJwt, false);
     }
 
     public Boolean logout(String refreshToken){
@@ -118,5 +123,26 @@ public class AuthService {
 
         userRepository.save(user);
 
+    }
+
+    public Login twoFactorLogin(Long id, String secret, String code) {
+        var user = userRepository.findById(Math.toIntExact(id))
+                .orElseThrow(InvalidCredentialsError::new);
+        var tfaSecret = !Objects.equals(user.getTfasecret(), "") ? user.getTfasecret() : secret;
+
+        if(!codeVerifier.isValidCode(tfaSecret,code))
+            throw new InvalidCredentialsError();
+
+        if (Objects.equals(user.getTfasecret(), "")){
+            user.setTfasecret(secret);
+            userRepository.save(user);
+        }
+        var login =Login.of(user.getId(), accessTokenSecret, refreshTokenSecret,false);
+        var refreshJwt= login.getRefreshJwt();
+
+        user.addToken(new Token(refreshJwt.getToken(), refreshJwt.getIssuedAt(), refreshJwt.getExpiration()));
+        userRepository.save(user);
+
+        return login;
     }
 }

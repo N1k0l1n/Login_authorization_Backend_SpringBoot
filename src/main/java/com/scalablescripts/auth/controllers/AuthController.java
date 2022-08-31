@@ -56,7 +56,7 @@ public class AuthController {
     }
 
     record LoginRequest (String email, String password){}
-    record LoginResponse(String token) {}
+    record LoginResponse(Long id, String secret,@JsonProperty("otpauth_url") String otpAuthUrl) {}
 
     @PostMapping("/login")
     public LoginResponse login(@RequestBody LoginRequest loginRequest, HttpServletResponse response){
@@ -69,7 +69,7 @@ public class AuthController {
 
         response.addCookie(cookie);
 
-        return new LoginResponse(login.getAccessJwt().getToken());
+        return new LoginResponse(login.getAccessJwt().getUserId(), login.getOtpSecret(), login.getOtpUrl());
     }
 
     record UserResponse(Long id,
@@ -103,7 +103,7 @@ public class AuthController {
     }
 
     record ForgotResponse (String message){}
-    record ForgotRequest (String email){}
+    record ForgotRequest  (String email){}
     @PostMapping("/forgot")
     public ForgotResponse forgot(@RequestBody ForgotRequest forgotRequest, HttpServletRequest request){
         var originUrl = request.getHeader("Origin");
@@ -111,11 +111,23 @@ public class AuthController {
         authService.forgot(forgotRequest.email(),originUrl);
         return new ForgotResponse("Succes");
     }
+
+
     record ResetResponse (String message){}
     record ResetRequest (String token, String password,@JsonProperty(value = "password_confirm") String passwordConfirm){}
     @PostMapping("/reset")
     public ResetResponse reset(@RequestBody ResetRequest resetRequest){
         authService.reset(resetRequest.token(), resetRequest.password(), resetRequest.passwordConfirm());
         return new ResetResponse("Success");
+    }
+
+    record TwoFactorRequest(Long id, String secret, String code){}
+    record TwoFactorResponse(String token){}
+
+    @PostMapping("two-factor")
+    public TwoFactorResponse twoFactor(@RequestBody TwoFactorRequest twoFactorRequest){
+        var login = authService.twoFactorLogin(twoFactorRequest.id(),twoFactorRequest.secret(), twoFactorRequest.code());
+
+        return new TwoFactorResponse(login.getAccessJwt().getToken());
     }
 }

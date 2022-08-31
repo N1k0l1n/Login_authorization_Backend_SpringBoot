@@ -39,21 +39,26 @@ public class User {
     @Column(name = "password", nullable = false)
     private String password;
 
+    @Getter @Setter
+    @Column(name = "tfasecret", nullable = false)
+    private String tfasecret;
+
     @MappedCollection @Transient private final Set<Token> tokens = new HashSet<>();
     @MappedCollection @Transient private final Set<PasswordRecovery> passwordRecoveries = new HashSet<>();
 
     public static User of(String firstName, String lastName, String email, String password) {
-        return new User (null, firstName, lastName, email, password, Collections.emptyList(), Collections.emptyList());
+        return new User (null, firstName, lastName, email, password, null,  Collections.emptyList(), Collections.emptyList());
     }
 
     @PersistenceConstructor
-    public User(Long id, String firstName, String lastName, String email, String password,
+    public User(Long id, String firstName, String lastName, String email, String password,String tfasecret,
                 Collection<Token> tokens, Collection<PasswordRecovery> passwordRecoveries) {
         this.id = id;
         this.firstName = firstName;
         this.lastName = lastName;
         this.email = email;
         this.password = password;
+        this.tfasecret = tfasecret;
         this.tokens.addAll(tokens);
         this.passwordRecoveries.addAll(passwordRecoveries);
     }
